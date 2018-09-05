@@ -454,13 +454,13 @@ const char HUE_DESCRIPTION_XML[] PROGMEM =
 const char HUE_LIGHTS_STATUS_JSON[] PROGMEM =
   "{\"on\":{state},"
   "\"bri\":{b},"
-  "\"hue\":{h},"
-  "\"sat\":{s},"
-  "\"xy\":[0.5, 0.5],"
-  "\"ct\":500,"
+//  "\"hue\":{h},"
+//  "\"sat\":{s},"
+//  "\"xy\":[0.5,0.5],"
+//  "\"ct\":500,"
   "\"alert\":\"none\","
   "\"effect\":\"none\","
-  "\"colormode\":\"hs\","
+//  "\"colormode\":\"hs\","
   "\"reachable\":true}";
 const char HUE_LIGHTS_STATUS_JSON2[] PROGMEM =
   ",\"type\":\"Extended color light\","
@@ -559,15 +559,22 @@ void HueLightStatus1(byte device, String *response)
   float hue = 0;
   float sat = 0;
   float bri = 0;
+  bool on = power & (1 << (device-1));
 
-  if (light_type) {
+  if(Settings.flag3.shutter_mode && (device > 0) && (device <= shutters_present)){
+    if((device < 0) || (device > shutters_present)) device = 1;
+    bri = (float)Shutter_Target_Position[device-1] / (float)Shutter_Open_Max[device-1];
+    on = Shutter_Target_Position[device - 1] > 0; 
+  }
+  else if (light_type) {
     LightGetHsb(&hue, &sat, &bri);
   }
+
   *response += FPSTR(HUE_LIGHTS_STATUS_JSON);
-  response->replace("{state}", (power & (1 << (device-1))) ? "true" : "false");
+  response->replace("{state}", on ? "true" : "false");
   response->replace("{h}", String((uint16_t)(65535.0f * hue)));
-  response->replace("{s}", String((uint8_t)(254.0f * sat)));
-  response->replace("{b}", String((uint8_t)(254.0f * bri)));
+  response->replace("{s}", String((uint8_t)(253.0f * sat + 1.5f)));
+  response->replace("{b}", String((uint8_t)(253.0f * bri + 1.5f)));
 }
 
 void HueLightStatus2(byte device, String *response)
@@ -581,6 +588,7 @@ void HueGlobalConfig(String *path)
 {
   String response;
   uint8_t maxhue = (devices_present > MAX_FRIENDLYNAMES) ? MAX_FRIENDLYNAMES : devices_present;
+  if(Settings.flag3.shutter_mode) maxhue = shutters_present;
 
   path->remove(0,1);                                 // cut leading / to get <id>
   response = F("{\"lights\":{\"");
@@ -607,6 +615,21 @@ void HueAuthentication(String *path)
   WebServer->send(200, FPSTR(HDR_CTYPE_JSON), response);
 }
 
+// device: 1..<numberOfShutters>
+// position: 0-100
+void SetShutterPosition(uint8_t device, uint8_t position)
+{
+          XdrvMailbox.index = device;
+          XdrvMailbox.data_len = 0;
+          XdrvMailbox.payload16 = 0;
+          XdrvMailbox.payload = position;
+          XdrvMailbox.grpflg = 0;
+          XdrvMailbox.notused = 0;
+          XdrvMailbox.topic = D_CMND_POSITION; // D_CMND_OPEN / D_CMND_CLOSE / D_CMND_POSITION
+          XdrvMailbox.data = NULL;
+          ShutterCommand();
+}
+
 void HueLights(String *path)
 {
 /*
@@ -623,6 +646,7 @@ void HueLights(String *path)
   bool on = false;
   bool change = false;
   uint8_t maxhue = (devices_present > MAX_FRIENDLYNAMES) ? MAX_FRIENDLYNAMES : devices_present;
+  if(Settings.flag3.shutter_mode) maxhue = shutters_present;
 
   path->remove(0,path->indexOf("/lights"));          // Remove until /lights
   if (path->endsWith("/lights")) {                   // Got /lights
@@ -651,44 +675,60 @@ void HueLights(String *path)
 
       StaticJsonBuffer<400> jsonBuffer;
       JsonObject &hue_json = jsonBuffer.parseObject(WebServer->arg(0));
-      if (hue_json.containsKey("on")) {
-
-        response += FPSTR(HUE_LIGHT_RESPONSE_JSON);
-        response.replace("{id", String(device));
-        response.replace("{cm", "on");
-
-        on = hue_json["on"];
-        switch(on)
-        {
-          case false : ExecuteCommandPower(device, POWER_OFF, SRC_HUE);
-                       response.replace("{re", "false");
-                       break;
-          case true  : ExecuteCommandPower(device, POWER_ON, SRC_HUE);
-                       response.replace("{re", "true");
-                       break;
-          default    : response.replace("{re", (power & (1 << (device-1))) ? "true" : "false");
-                       break;
-        }
-        resp = true;
-      }
 
       if (light_type) {
         LightGetHsb(&hue, &sat, &bri);
       }
+      else if(Settings.flag3.shutter_mode && (device > 0) && (device <= shutters_present)) {
+        bri = (float)Shutter_Target_Position[device-1] / Shutter_Open_Max[device-1];
+      }
 
       if (hue_json.containsKey("bri")) {
         tmp = hue_json["bri"];
-        bri = (float)tmp / 254.0f;
+        bri = (float)tmp / 253.0f;
+        //bri = ((float)tmp + 0.48f) / 254.0f;
+        //bri = ((float)tmp - 1.0f) / 253.0f;
         if (resp) {
           response += ",";
         }
         response += FPSTR(HUE_LIGHT_RESPONSE_JSON);
         response.replace("{id", String(device));
         response.replace("{cm", "bri");
-        response.replace("{re", String(tmp));
+        //response.replace("{re", String((uint8_t)(254.0f * bri)));
+        response.replace("{re", String((uint8_t)tmp));
         resp = true;
         change = true;
       }
+      if (hue_json.containsKey("on")) {
+        response += FPSTR(HUE_LIGHT_RESPONSE_JSON);
+        response.replace("{id", String(device));
+        response.replace("{cm", "on");
+
+        on = hue_json["on"];
+        if(Settings.flag3.shutter_mode) {
+          if(!change) {
+            response.replace("{re", on ? "true" : "false");
+            bri = on ? 1.0f : 0.0f;
+            change = true;
+          }
+        }
+        else
+        {
+          switch(on)
+          {
+            case false : ExecuteCommandPower(device, POWER_OFF, SRC_HUE);
+                        response.replace("{re", "false");
+                        break;
+            case true  : ExecuteCommandPower(device, POWER_ON, SRC_HUE);
+                        response.replace("{re", "true");
+                        break;
+            default    : response.replace("{re", (power & (1 << (device-1))) ? "true" : "false");
+                        break;
+          }
+        }
+        resp = true;
+      }
+
       if (hue_json.containsKey("hue")) {
         tmp = hue_json["hue"];
         hue = (float)tmp / 65535.0f;
@@ -726,7 +766,10 @@ void HueLights(String *path)
         change = true;
       }
       if (change) {
-        if (light_type) {
+        if(Settings.flag3.shutter_mode) {
+          SetShutterPosition(device, bri * 100.0f + 0.05f);
+        }
+        else if (light_type) {
           LightSetHsb(hue, sat, bri, ct);
         }
         change = false;
@@ -756,6 +799,9 @@ void HueLights(String *path)
   else {
     WebServer->send(406, FPSTR(HDR_CTYPE_JSON), "{}");
   }
+
+  snprintf_P(log_data, sizeof(log_data), PSTR(D_LOG_HTTP D_HUE_API " (%s)"), response.c_str());
+  AddLog(LOG_LEVEL_DEBUG_MORE);
 }
 
 void HueGroups(String *path)
@@ -765,6 +811,7 @@ void HueGroups(String *path)
  */
   String response = "{}";
   uint8_t maxhue = (devices_present > MAX_FRIENDLYNAMES) ? MAX_FRIENDLYNAMES : devices_present;
+  if(Settings.flag3.shutter_mode) maxhue = shutters_present;
 
   if (path->endsWith("/0")) {
     response = FPSTR(HUE_GROUP0_STATUS_JSON);
@@ -792,6 +839,10 @@ void HandleHueApi(String *path)
   uint8_t args = 0;
 
   path->remove(0, 4);                                // remove /api
+  while(path->endsWith("/")) {                        // remove trailing "/"
+    path->remove(path->length() - 1, 1);
+  }
+
   uint16_t apilen = path->length();
   snprintf_P(log_data, sizeof(log_data), PSTR(D_LOG_HTTP D_HUE_API " (%s)"), path->c_str());
   AddLog(LOG_LEVEL_DEBUG_MORE);                      // HTP: Hue API (//lights/1/state)
