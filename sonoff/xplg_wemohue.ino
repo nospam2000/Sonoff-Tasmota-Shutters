@@ -561,9 +561,9 @@ void HueLightStatus1(byte device, String *response)
   float bri = 0;
   bool on = power & (1 << (device-1));
 
-  if(Settings.flag3.shutter_mode && (device > 0) && (device <= shutters_present)){
+  if(Settings.flag3.shutter_mode){
     if((device < 0) || (device > shutters_present)) device = 1;
-    bri = (float)Shutter_Target_Position[device-1] / (float)Shutter_Open_Max[device-1];
+    bri = GetShutterPosition(device);
     on = Shutter_Target_Position[device - 1] > 0; 
   }
   else if (light_type) {
@@ -613,21 +613,6 @@ void HueAuthentication(String *path)
 
   snprintf_P(response, sizeof(response), PSTR("[{\"success\":{\"username\":\"%s\"}}]"), GetHueUserId().c_str());
   WebServer->send(200, FPSTR(HDR_CTYPE_JSON), response);
-}
-
-// device: 1..<numberOfShutters>
-// position: 0-100
-void SetShutterPosition(uint8_t device, uint8_t position)
-{
-          XdrvMailbox.index = device;
-          XdrvMailbox.data_len = 0;
-          XdrvMailbox.payload16 = 0;
-          XdrvMailbox.payload = position;
-          XdrvMailbox.grpflg = 0;
-          XdrvMailbox.notused = 0;
-          XdrvMailbox.topic = D_CMND_POSITION; // D_CMND_OPEN / D_CMND_CLOSE / D_CMND_POSITION
-          XdrvMailbox.data = NULL;
-          ShutterCommand();
 }
 
 void HueLights(String *path)
@@ -680,7 +665,7 @@ void HueLights(String *path)
         LightGetHsb(&hue, &sat, &bri);
       }
       else if(Settings.flag3.shutter_mode && (device > 0) && (device <= shutters_present)) {
-        bri = (float)Shutter_Target_Position[device-1] / Shutter_Open_Max[device-1];
+        bri = GetShutterPosition(device);
       }
 
       if (hue_json.containsKey("bri")) {
@@ -864,4 +849,31 @@ void HandleHueApi(String *path)
   else if (path->endsWith("/rules")) HueNotImplemented(path);
   else HueGlobalConfig(path);
 }
+
+///////////////////////////////////////////////////////////////////////////////////
+// Shutter specific functions
+// TODO: move to shutter driver and make them accessible in a generic way
+
+// device: 1..<numberOfShutters>
+// position: 0-100
+void SetShutterPosition(uint8_t device, uint8_t position)
+{
+          XdrvMailbox.index = device;
+          XdrvMailbox.data_len = 0;
+          XdrvMailbox.payload16 = 0;
+          XdrvMailbox.payload = position;
+          XdrvMailbox.grpflg = 0;
+          XdrvMailbox.notused = 0;
+          XdrvMailbox.topic = D_CMND_POSITION; // D_CMND_OPEN / D_CMND_CLOSE / D_CMND_POSITION
+          XdrvMailbox.data = NULL;
+          ShutterCommand();
+}
+
+// returns the normalized shutter position (0.00 .. 100.00)
+float GetShutterPosition(uint8_t device) {
+      float bri = (float)Shutter_Target_Position[device-1] / (float)Shutter_Open_Max[device-1];
+      return bri;
+}
+
+
 #endif  // USE_WEBSERVER && USE_EMULATION
