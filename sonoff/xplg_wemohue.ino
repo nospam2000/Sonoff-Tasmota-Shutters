@@ -554,6 +554,18 @@ void HueConfig(String *path)
   WebServer->send(200, FPSTR(HDR_CTYPE_JSON), response);
 }
 
+uint8_t FactorToAlexa(float factor) {
+  uint8_t alexaValue = (uint8_t)(253.0f * factor + 1.5f);
+  if(alexaValue > 254)
+    alexaValue = 254;
+}
+
+float AlexaToFactor(uint8_t alexaValue) {
+  float factor = alexaValue / 253.0f;
+  if(factor > 1.0f)
+    factor = 1.0f;
+}
+
 void HueLightStatus1(byte device, String *response)
 {
   float hue = 0;
@@ -573,8 +585,8 @@ void HueLightStatus1(byte device, String *response)
   *response += FPSTR(HUE_LIGHTS_STATUS_JSON);
   response->replace("{state}", on ? "true" : "false");
   response->replace("{h}", String((uint16_t)(65535.0f * hue)));
-  response->replace("{s}", String((uint8_t)(253.0f * sat + 1.5f)));
-  response->replace("{b}", String((uint8_t)(253.0f * bri + 1.5f)));
+  response->replace("{s}", String(FactorToAlexa(sat)));
+  response->replace("{b}", String(FactorToAlexa(bri)));
 }
 
 void HueLightStatus2(byte device, String *response)
@@ -670,16 +682,13 @@ void HueLights(String *path)
 
       if (hue_json.containsKey("bri")) {
         tmp = hue_json["bri"];
-        bri = (float)tmp / 253.0f;
-        //bri = ((float)tmp + 0.48f) / 254.0f;
-        //bri = ((float)tmp - 1.0f) / 253.0f;
+        bri = AlexaToFactor(tmp);
         if (resp) {
           response += ",";
         }
         response += FPSTR(HUE_LIGHT_RESPONSE_JSON);
         response.replace("{id", String(device));
         response.replace("{cm", "bri");
-        //response.replace("{re", String((uint8_t)(254.0f * bri)));
         response.replace("{re", String((uint8_t)tmp));
         resp = true;
         change = true;
@@ -729,7 +738,7 @@ void HueLights(String *path)
       }
       if (hue_json.containsKey("sat")) {
         tmp = hue_json["sat"];
-        sat = (float)tmp / 254.0f;
+        sat = AlexaToFactor(tmp);
         if (resp) {
           response += ",";
         }
