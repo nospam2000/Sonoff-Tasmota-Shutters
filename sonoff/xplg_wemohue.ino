@@ -675,23 +675,24 @@ void HueLights(String *path)
       StaticJsonBuffer<400> jsonBuffer;
       JsonObject &hue_json = jsonBuffer.parseObject(WebServer->arg(0));
 
-      if (light_type) {
-        LightGetHsb(&hue, &sat, &bri);
-      }
-      else if(Settings.flag3.shutter_mode && (device > 0) && (device <= shutters_present)) {
+      if(Settings.flag3.shutter_mode) {
         bri = GetShutterPosition(device);
+      }
+      else if (light_type) {
+        LightGetHsb(&hue, &sat, &bri);
       }
 
       if (hue_json.containsKey("bri")) {
         tmp = hue_json["bri"];
         bri = AlexaToFactor(tmp);
+        on = (tmp >= 2);
         if (resp) {
           response += ",";
         }
         response += FPSTR(HUE_LIGHT_RESPONSE_JSON);
         response.replace("{id", String(device));
         response.replace("{cm", "bri");
-        response.replace("{re", String((uint8_t)tmp));
+        response.replace("{re", String(tmp));
         resp = true;
         change = true;
       }
@@ -700,16 +701,17 @@ void HueLights(String *path)
         response.replace("{id", String(device));
         response.replace("{cm", "on");
 
-        on = hue_json["on"];
         if(Settings.flag3.shutter_mode) {
           if(!change) {
-            response.replace("{re", on ? "true" : "false");
-            bri = on ? 1.0f : 0.0f;
+            on = hue_json["on"];
+            bri = on ? 1.0f : 0.0f; // when bri is not part of this request then calculate it
             change = true;
           }
+          response.replace("{re", on ? "true" : "false");
         }
         else
         {
+          on = hue_json["on"];
           switch(on)
           {
             case false : ExecuteCommandPower(device, POWER_OFF, SRC_HUE);
