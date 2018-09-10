@@ -558,12 +558,14 @@ uint8_t FactorToAlexa(float factor) {
   uint8_t alexaValue = (uint8_t)(253.0f * factor + 1.5f);
   if(alexaValue > 254)
     alexaValue = 254;
+  return alexaValue;
 }
 
 float AlexaToFactor(uint8_t alexaValue) {
   float factor = alexaValue / 253.0f;
   if(factor > 1.0f)
     factor = 1.0f;
+  return factor;
 }
 
 void HueLightStatus1(byte device, String *response)
