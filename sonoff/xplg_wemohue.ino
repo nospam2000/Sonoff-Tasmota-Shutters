@@ -558,6 +558,8 @@ uint8_t FactorToAlexa(float factor) {
   uint8_t alexaValue = (uint8_t)(253.0f * factor + 1.5f);
   if(alexaValue > 254)
     alexaValue = 254;
+  else if(alexaValue < 2) // < 1% is 0%
+    alexaValue = 0;
   return alexaValue;
 }
 
@@ -867,25 +869,27 @@ void HandleHueApi(String *path)
 // Shutter specific functions
 // TODO: move to shutter driver and make them accessible in a generic way
 
-// device: 1..<numberOfShutters>
 // position: 0-100
 void SetShutterPosition(uint8_t device, uint8_t position)
 {
-          XdrvMailbox.index = device;
-          XdrvMailbox.data_len = 0;
-          XdrvMailbox.payload16 = 0;
-          XdrvMailbox.payload = position;
-          XdrvMailbox.grpflg = 0;
-          XdrvMailbox.notused = 0;
-          XdrvMailbox.topic = D_CMND_POSITION; // D_CMND_OPEN / D_CMND_CLOSE / D_CMND_POSITION
-          XdrvMailbox.data = NULL;
-          ShutterCommand();
+  if(Settings.shutter_invert[device-1])
+    position = 100 - position;
+  last_source = SRC_HUE;
+  XdrvMailbox.index = device;
+  XdrvMailbox.data_len = 0;
+  XdrvMailbox.payload16 = 0;
+  XdrvMailbox.payload = position;
+  XdrvMailbox.grpflg = 0;
+  XdrvMailbox.notused = 0;
+  XdrvMailbox.topic = D_CMND_POSITION; // D_CMND_OPEN / D_CMND_CLOSE / D_CMND_POSITION
+  XdrvMailbox.data = NULL;
+  ShutterCommand();
 }
 
-// returns the normalized shutter position (0.00 .. 100.00)
+// returns the normalized shutter position (0.00 .. 1.00)
 float GetShutterPosition(uint8_t device) {
-      float bri = (float)Shutter_Target_Position[device-1] / (float)Shutter_Open_Max[device-1];
-      return bri;
+  float bri = (float)Shutter_Target_Position[device-1] / (float)Shutter_Open_Max[device-1];
+  return bri;
 }
 
 
