@@ -451,17 +451,18 @@ const char HUE_DESCRIPTION_XML[] PROGMEM =
   "</device>"
   "</root>\r\n"
   "\r\n";
-const char HUE_LIGHTS_STATUS_JSON[] PROGMEM =
+const char HUE_LIGHTS_STATUS_BASE_JSON[] PROGMEM =
   "{\"on\":{state},"
-  "\"bri\":{b},"
-//  "\"hue\":{h},"
-//  "\"sat\":{s},"
-//  "\"xy\":[0.5,0.5],"
-//  "\"ct\":500,"
   "\"alert\":\"none\","
   "\"effect\":\"none\","
-//  "\"colormode\":\"hs\","
-  "\"reachable\":true}";
+  "\"reachable\":true";
+const char HUE_LIGHTS_STATUS_BRI_JSON[] PROGMEM =
+  ",\"bri\":{b}";
+const char HUE_LIGHTS_STATUS_COLOR_JSON[] PROGMEM =
+  ",\"hue\":{h},"
+  "\"sat\":{s},"
+  "\"colormode\":\"hs\"";
+const char HUE_LIGHTS_CLOSE_PARENTHESES_JSON[] PROGMEM = "}"; 
 const char HUE_LIGHTS_STATUS_JSON2[] PROGMEM =
   ",\"type\":\"Extended color light\","
   "\"name\":\"{j1\","
@@ -586,11 +587,26 @@ void HueLightStatus1(byte device, String *response)
     LightGetHsb(&hue, &sat, &bri);
   }
 
-  *response += FPSTR(HUE_LIGHTS_STATUS_JSON);
+  *response += FPSTR(HUE_LIGHTS_STATUS_BASE_JSON);
   response->replace("{state}", on ? "true" : "false");
-  response->replace("{h}", String((uint16_t)(65535.0f * hue)));
-  response->replace("{s}", String(FactorToAlexa(sat)));
-  response->replace("{b}", String(FactorToAlexa(bri)));
+
+  if(Settings.flag3.shutter_mode || light_type > 0) {
+    *response += FPSTR(HUE_LIGHTS_STATUS_BRI_JSON);
+    response->replace("{b}", String(FactorToAlexa(bri)));
+  }
+
+  if (light_subtype >= LST_RGB) {
+    *response += FPSTR(HUE_LIGHTS_STATUS_COLOR_JSON);
+    response->replace("{h}", String((uint16_t)(65535.0f * hue)));
+    response->replace("{s}", String(FactorToAlexa(sat)));
+  }
+
+  /* TODO: add support for color temperature?
+  if ((LST_COLDWARM == light_subtype) || (LST_RGBWC == light_subtype)) {
+  }
+  */
+
+  *response += FPSTR(HUE_LIGHTS_CLOSE_PARENTHESES_JSON);
 }
 
 void HueLightStatus2(byte device, String *response)
@@ -619,7 +635,7 @@ void HueGlobalConfig(String *path)
   }
   response += F("},\"groups\":{},\"schedules\":{},\"config\":");
   HueConfigResponse(&response);
-  response += "}";
+  response += FPSTR(HUE_LIGHTS_CLOSE_PARENTHESES_JSON);
   WebServer->send(200, FPSTR(HDR_CTYPE_JSON), response);
 }
 
@@ -661,7 +677,7 @@ void HueLights(String *path)
         response += ",\"";
       }
     }
-    response += "}";
+    response += FPSTR(HUE_LIGHTS_CLOSE_PARENTHESES_JSON);
     WebServer->send(200, FPSTR(HDR_CTYPE_JSON), response);
   }
   else if (path->endsWith("/state")) {               // Got ID/state
@@ -821,7 +837,7 @@ void HueGroups(String *path)
     }
     response.replace("{l1", lights);
     HueLightStatus1(1, &response);
-    response += F("}");
+    response += FPSTR(HUE_LIGHTS_CLOSE_PARENTHESES_JSON);
   }
 
   WebServer->send(200, FPSTR(HDR_CTYPE_JSON), response);
