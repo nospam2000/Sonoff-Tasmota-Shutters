@@ -1283,7 +1283,7 @@ void WifiCheckIp()
     WifiState(1);
     wifi_counter = WIFI_CHECK_SEC;
     wifi_retry = wifi_retry_init;
-    AddLog_P((wifi_status != WL_CONNECTED) ? LOG_LEVEL_INFO : LOG_LEVEL_DEBUG_MORE, S_LOG_WIFI, PSTR(D_CONNECTED));
+    //AddLog_P((wifi_status != WL_CONNECTED) ? LOG_LEVEL_INFO : LOG_LEVEL_DEBUG_MORE, S_LOG_WIFI, PSTR(D_CONNECTED));
     if (wifi_status != WL_CONNECTED) {
 //      AddLog_P(LOG_LEVEL_INFO, PSTR("Wifi: Set IP addresses"));
       Settings.ip_address[1] = (uint32_t)WiFi.gatewayIP();
@@ -1414,7 +1414,7 @@ void WifiCheck(uint8_t param)
       }
     } else {
       if (wifi_counter <= 0) {
-        AddLog_P(LOG_LEVEL_DEBUG_MORE, S_LOG_WIFI, PSTR(D_CHECKING_CONNECTION));
+        //AddLog_P(LOG_LEVEL_DEBUG_MORE, S_LOG_WIFI, PSTR(D_CHECKING_CONNECTION));
         wifi_counter = WIFI_CHECK_SEC;
         WifiCheckIp();
       }
